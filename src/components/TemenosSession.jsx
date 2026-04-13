@@ -20,6 +20,7 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
   const [paused, setPaused] = useState(false);
   const [stopped, setStopped] = useState(false);
   const bottomRef = useRef(null);
+  const abortRef = useRef(null);
 
   const partners = [partner1, partner2];
   const tabColors = ['var(--rose)', 'var(--teal)'];
@@ -27,6 +28,10 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   async function handleSend(e) {
     e.preventDefault();
@@ -36,8 +41,12 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
     setLoading(true);
     setInput('');
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const screening = await screenMessage(text);
+      const screening = await screenMessage(text, { signal: controller.signal });
 
       if (screening.level === 4) {
         setStopped(true);
@@ -76,22 +85,29 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
         return;
       }
 
-      await deliverMessage(text);
+      await deliverMessage(text, controller);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `Connection issue. Please try again. (${err.message})`,
+        content: `Screening unavailable — message not sent for safety. Please try again. (${err.message})`,
       }]);
       setLoading(false);
     }
   }
 
-  async function deliverMessage(text) {
+  async function deliverMessage(text, existingController) {
     const sender = partners[activeTab];
     const userMsg = { role: 'user', content: `[${sender}]: ${text}`, sender };
     const updated = [...messages.filter(m => m.role !== 'system'), userMsg];
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
+
+    const controller = existingController || new AbortController();
+    if (!existingController) {
+      abortRef.current?.abort();
+      abortRef.current = controller;
+    }
 
     try {
       const system = PHILO_COUPLES_SYSTEM.replace(/\[Partner A\]/g, partner1).replace(/\[Partner B\]/g, partner2);
@@ -100,10 +116,12 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: m.content,
         })),
-        system
+        system,
+        { signal: controller.signal }
       );
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `I'm having trouble connecting. Please try again. (${err.message})`,
@@ -113,10 +131,10 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
     }
   }
 
-  function handleSendAnyway() {
+  async function handleSendAnyway() {
     const text = interception.original;
     setInterception(null);
-    deliverMessage(text);
+    await deliverMessage(text);
   }
 
   function handleRewrite() {
@@ -207,7 +225,7 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
             </p>
           </div>
         </div>
-        <button onClick={onEnd} style={{
+        <button onClick={onEnd} disabled={loading} style={{
           background: 'rgba(255,255,255,0.08)',
           color: 'rgba(255,255,255,0.5)',
           fontSize: '0.8rem',
@@ -386,7 +404,7 @@ export default function TemenosSession({ partner1, partner2, onEnd }) {
                   fontWeight: activeTab === i ? 600 : 400,
                   borderBottom: activeTab === i ? `2px solid ${tabColors[i]}` : '2px solid transparent',
                   borderRadius: 0,
-                  transition: 'all 0.2s',
+                  transition: 'color 0.2s, background 0.2s, border-color 0.2s',
                 }}
               >
                 {p}

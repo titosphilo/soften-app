@@ -2,21 +2,32 @@ const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-20250514';
 
-export async function sendMessage(messages, system) {
+if (!API_KEY) {
+  console.error('VITE_ANTHROPIC_API_KEY is not set. Add it to your .env file.');
+}
+
+const HEADERS = {
+  'Content-Type': 'application/json',
+  'x-api-key': API_KEY,
+  'anthropic-version': '2023-06-01',
+  'anthropic-dangerous-direct-browser-access': 'true',
+};
+
+export async function sendMessage(messages, system, { signal } = {}) {
+  if (!API_KEY) {
+    throw new Error('API key is not configured. Create a .env file with VITE_ANTHROPIC_API_KEY.');
+  }
+
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: HEADERS,
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1024,
       system,
       messages,
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -25,36 +36,53 @@ export async function sendMessage(messages, system) {
   }
 
   const data = await response.json();
+
+  if (!data.content?.[0]?.text) {
+    throw new Error('Unexpected API response shape');
+  }
+
   return data.content[0].text;
 }
 
-export async function screenMessage(text) {
+export async function screenMessage(text, { signal } = {}) {
+  if (!API_KEY) {
+    throw new Error('API key is not configured.');
+  }
+
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: HEADERS,
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 100,
       system: SCREENER_SYSTEM,
       messages: [{ role: 'user', content: text }],
     }),
+    signal,
   });
 
   if (!response.ok) {
-    return { level: 0 };
+    throw new Error(`Screening API error ${response.status}`);
   }
 
   const data = await response.json();
-  try {
-    return JSON.parse(data.content[0].text);
-  } catch {
-    return { level: 0 };
+
+  if (!data.content?.[0]?.text) {
+    throw new Error('Unexpected screening response shape');
   }
+
+  let result;
+  try {
+    result = JSON.parse(data.content[0].text);
+  } catch {
+    throw new Error('Failed to parse screening response');
+  }
+
+  const level = Number(result.level);
+  if (!Number.isFinite(level) || level < 0 || level > 4) {
+    throw new Error('Invalid screening level');
+  }
+  return { level };
 }
 
 const SCREENER_SYSTEM = `You are a message screener for a couples therapy app. Evaluate the message and respond ONLY with a JSON object containing a "level" number.

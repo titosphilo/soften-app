@@ -58,7 +58,11 @@ function App() {
         <TemenosSession
           partner1={partner1}
           partner2={partner2}
-          onEnd={() => setScreen('home')}
+          onEnd={() => {
+            setPartner1('');
+            setPartner2('');
+            setScreen('home');
+          }}
         />
       );
     default:

@@ -7,10 +7,15 @@ export default function SoloChat({ onBack }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   async function handleSend(e) {
     e.preventDefault();
@@ -23,13 +28,19 @@ export default function SoloChat({ onBack }) {
     setInput('');
     setLoading(true);
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const reply = await sendMessage(
         updated.map(m => ({ role: m.role, content: m.content })),
-        PHILO_SOLO_SYSTEM
+        PHILO_SOLO_SYSTEM,
+        { signal: controller.signal }
       );
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setMessages(prev => [...prev, { role: 'assistant', content: `I'm having trouble connecting right now. Please check your API key and try again.\n\n(${err.message})` }]);
     } finally {
       setLoading(false);
@@ -46,7 +57,7 @@ export default function SoloChat({ onBack }) {
         gap: 12,
         background: 'white',
       }}>
-        <button onClick={onBack} style={{
+        <button onClick={onBack} disabled={loading} style={{
           background: 'none',
           padding: '4px 8px',
           fontSize: '0.9rem',
