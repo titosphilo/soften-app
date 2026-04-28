@@ -17,7 +17,7 @@ npm install
 
 # Create your environment file
 cp .env.example .env
-# Edit .env and add your Anthropic API key
+# Edit .env and add your Gemini API key
 
 # Start development server
 npm run dev
@@ -27,7 +27,7 @@ npm run dev
 
 | Variable | Description |
 |----------|-------------|
-| `VITE_ANTHROPIC_API_KEY` | Your Anthropic API key (required). Get one at [console.anthropic.com](https://console.anthropic.com/) |
+| `VITE_GEMINI_API_KEY` | Your Google AI Studio (Gemini) API key (required). Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 
 ## Scripts
 
@@ -47,7 +47,7 @@ src/
   main.jsx                 # React entry point
   index.css                # Global styles and design tokens
   lib/
-    api.js                 # Anthropic API client (sendMessage, screenMessage)
+    api.js                 # Gemini API client (sendMessage, screenMessage)
     philo.js               # System prompts for Philo (solo + couples)
   components/
     Landing.jsx            # Terms acceptance screen

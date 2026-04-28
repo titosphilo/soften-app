@@ -1,31 +1,45 @@
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
-const API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-20250514';
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const MODEL = 'gemini-2.5-flash';
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 if (!API_KEY) {
-  console.error('VITE_ANTHROPIC_API_KEY is not set. Add it to your .env file.');
+  console.error('VITE_GEMINI_API_KEY is not set. Add it to your .env file.');
 }
 
 const HEADERS = {
   'Content-Type': 'application/json',
-  'x-api-key': API_KEY,
-  'anthropic-version': '2023-06-01',
-  'anthropic-dangerous-direct-browser-access': 'true',
+  'x-goog-api-key': API_KEY,
 };
+
+// The screener evaluates harsh/contemptuous content by design, so model-side
+// safety filters must not pre-empt it. The app does its own classification.
+const SAFETY_SETTINGS = [
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+];
+
+function toGeminiContents(messages) {
+  return messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+}
 
 export async function sendMessage(messages, system, { signal } = {}) {
   if (!API_KEY) {
-    throw new Error('API key is not configured. Create a .env file with VITE_ANTHROPIC_API_KEY.');
+    throw new Error('API key is not configured. Create a .env file with VITE_GEMINI_API_KEY.');
   }
 
   const response = await fetch(API_URL, {
     method: 'POST',
     headers: HEADERS,
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1024,
-      system,
-      messages,
+      system_instruction: { parts: [{ text: system }] },
+      contents: toGeminiContents(messages),
+      safetySettings: SAFETY_SETTINGS,
+      generationConfig: { maxOutputTokens: 1024 },
     }),
     signal,
   });
@@ -36,12 +50,12 @@ export async function sendMessage(messages, system, { signal } = {}) {
   }
 
   const data = await response.json();
-
-  if (!data.content?.[0]?.text) {
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
     throw new Error('Unexpected API response shape');
   }
 
-  return data.content[0].text;
+  return text;
 }
 
 export async function screenMessage(text, { signal } = {}) {
@@ -53,10 +67,13 @@ export async function screenMessage(text, { signal } = {}) {
     method: 'POST',
     headers: HEADERS,
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 100,
-      system: SCREENER_SYSTEM,
-      messages: [{ role: 'user', content: text }],
+      system_instruction: { parts: [{ text: SCREENER_SYSTEM }] },
+      contents: [{ role: 'user', parts: [{ text }] }],
+      safetySettings: SAFETY_SETTINGS,
+      generationConfig: {
+        maxOutputTokens: 100,
+        responseMimeType: 'application/json',
+      },
     }),
     signal,
   });
@@ -66,14 +83,14 @@ export async function screenMessage(text, { signal } = {}) {
   }
 
   const data = await response.json();
-
-  if (!data.content?.[0]?.text) {
+  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!raw) {
     throw new Error('Unexpected screening response shape');
   }
 
   let result;
   try {
-    result = JSON.parse(data.content[0].text);
+    result = JSON.parse(raw);
   } catch {
     throw new Error('Failed to parse screening response');
   }

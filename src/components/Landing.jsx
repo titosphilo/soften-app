@@ -14,7 +14,7 @@ Soften is an AI-powered relationship coaching tool. It is NOT a substitute for p
 Soften is not equipped to handle mental health emergencies, domestic violence situations, or any crisis requiring immediate professional intervention. If you are in danger, please contact emergency services (999) or the National Domestic Abuse Helpline (0808 2000 247) immediately.
 
 4. PRIVACY AND CONFIDENTIALITY
-- Conversations with Philo are processed through the Anthropic API. Messages are sent to Anthropic's servers for AI processing.
+- Conversations with Philo are processed through the Google Gemini API. Messages are sent to Google's servers for AI processing.
 - We do not store your conversations permanently on our servers.
 - You are responsible for the privacy of your own device.
 - In couples mode, both partners can see all messages in the shared session.
